@@ -71,12 +71,13 @@ def query_perplexity(query):
         return None
 
 
-def parse_citations(response):
+def parse_citations(response, debug=False):
     """
     Parse Perplexity API response to find wtatennis.com citations
 
     Args:
         response: API response dictionary
+        debug: If True, print debug information about response structure
 
     Returns:
         tuple: (appears, position, citation_url)
@@ -87,17 +88,61 @@ def parse_citations(response):
     if not response:
         return False, "Error", None
 
-    # Try to find citations in the response
-    citations = response.get("citations", [])
+    try:
+        # Check for search_results first (primary field used by Perplexity API)
+        search_results = response.get("search_results", [])
+        citations = response.get("citations", [])
 
-    # Check each citation for WTA domains
-    for idx, citation_url in enumerate(citations, start=1):
-        # Check if any WTA domain is in the citation URL
-        if any(domain in citation_url.lower() for domain in WTA_DOMAINS):
-            return True, idx, citation_url
+        # Debug logging (only if requested)
+        if debug:
+            if search_results:
+                st.info(f"DEBUG: Response has 'search_results' field with {len(search_results)} items")
+                if search_results and isinstance(search_results[0], dict):
+                    st.info(f"DEBUG: First result structure: {search_results[0]}")
+            if citations:
+                st.info(f"DEBUG: Response has 'citations' field with {len(citations)} items")
+                if citations:
+                    st.info(f"DEBUG: First citation: {citations[0]}")
 
-    # Not found
-    return False, "Not found", None
+        # Process search_results (array of objects with url, title, date)
+        if search_results:
+            for idx, result in enumerate(search_results, start=1):
+                # Handle object structure
+                if isinstance(result, dict):
+                    citation_url = result.get("url", "")
+                else:
+                    # Handle string structure (fallback)
+                    citation_url = str(result)
+
+                # Check if any WTA domain is in the citation URL
+                if citation_url and any(domain in citation_url.lower() for domain in WTA_DOMAINS):
+                    if debug:
+                        st.success(f"DEBUG: Found WTA at position {idx}: {citation_url}")
+                    return True, idx, citation_url
+
+        # Fallback to citations field (array of strings)
+        if citations:
+            for idx, citation in enumerate(citations, start=1):
+                # Handle both string and object structures
+                if isinstance(citation, dict):
+                    citation_url = citation.get("url", "")
+                else:
+                    citation_url = str(citation)
+
+                # Check if any WTA domain is in the citation URL
+                if citation_url and any(domain in citation_url.lower() for domain in WTA_DOMAINS):
+                    if debug:
+                        st.success(f"DEBUG: Found WTA in citations at position {idx}: {citation_url}")
+                    return True, idx, citation_url
+
+        # Not found in either field
+        if debug:
+            st.warning("DEBUG: WTA domain not found in search_results or citations")
+        return False, "Not found", None
+
+    except Exception as e:
+        st.error(f"Error parsing citations: {str(e)}")
+        return False, "Error", None
 
 
 def save_result(timestamp, query, appears, position, citation_url):
@@ -173,8 +218,9 @@ def run_weekly_check():
         # Query Perplexity API
         response = query_perplexity(query)
 
-        # Parse citations
-        appears, position, citation_url = parse_citations(response)
+        # Parse citations (enable debug for first query only)
+        debug_mode = (idx == 0)
+        appears, position, citation_url = parse_citations(response, debug=debug_mode)
 
         # Get current timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
