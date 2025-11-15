@@ -324,11 +324,315 @@ def calculate_summary_stats(df):
     }
 
 
+def apply_wta_styling():
+    """Apply WTA brand styling to the Streamlit app"""
+    st.markdown("""
+    <style>
+        /* Import Inter font as fallback for General Sans */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+        /* Global Styles */
+        .main {
+            background-color: #FAFAF8;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #2C0046;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* WTA Header */
+        .wta-header {
+            background: linear-gradient(135deg, #2C0046 0%, #7100B4 100%);
+            padding: 32px 24px;
+            border-radius: 0;
+            border-bottom: 3px solid #00CD5A;
+            margin: -60px -60px 32px -60px;
+        }
+
+        .wta-header h1 {
+            color: #FFFFFF;
+            font-size: 32px;
+            font-weight: 900;
+            margin: 0 0 8px 0;
+            letter-spacing: -0.5px;
+        }
+
+        .wta-header .subtitle {
+            color: #00CD5A;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* Section Headers */
+        .wta-section-header {
+            color: #2C0046;
+            font-size: 28px;
+            font-weight: 800;
+            margin: 32px 0 20px 0;
+            padding-bottom: 12px;
+            border-bottom: 3px solid;
+            border-image: linear-gradient(135deg, #00CD5A 0%, #00A360 100%) 1;
+        }
+
+        /* Metric Boxes */
+        .wta-metric-box {
+            background: #FFFFFF;
+            border: 2px solid #E8E8E8;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .wta-metric-box:hover {
+            border-color: #00CD5A;
+            box-shadow: 0 4px 12px rgba(0, 163, 96, 0.1);
+        }
+
+        .wta-metric-box .metric-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #00A360;
+            margin-bottom: 8px;
+        }
+
+        .wta-metric-box .metric-label {
+            font-size: 15px;
+            font-weight: 600;
+            color: #2C0046;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Buttons */
+        .stButton>button {
+            background: linear-gradient(135deg, #00CD5A 0%, #00A360 100%);
+            color: #2C0046;
+            font-size: 18px;
+            font-weight: 700;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            transition: all 0.3s ease;
+        }
+
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #00A360 0%, #008C4C 100%);
+            box-shadow: 0 6px 16px rgba(0, 163, 96, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .stButton>button:active {
+            transform: translateY(0);
+        }
+
+        /* Data Tables */
+        .stDataFrame {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #E8E8E8;
+        }
+
+        .stDataFrame thead tr {
+            background: linear-gradient(135deg, #00CD5A 0%, #00A360 100%);
+        }
+
+        .stDataFrame thead tr th {
+            color: #2C0046 !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            padding: 16px 12px;
+        }
+
+        .stDataFrame tbody tr:nth-child(even) {
+            background-color: #FAFAF8;
+        }
+
+        .stDataFrame tbody tr:nth-child(odd) {
+            background-color: #FFFFFF;
+        }
+
+        /* Metrics */
+        .stMetric {
+            background: #FFFFFF;
+            border: 2px solid #E8E8E8;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .stMetric label {
+            color: #2C0046 !important;
+            font-weight: 600 !important;
+            font-size: 15px;
+        }
+
+        .stMetric [data-testid="stMetricValue"] {
+            color: #00A360 !important;
+            font-weight: 800 !important;
+            font-size: 24px;
+        }
+
+        /* Info/Success/Error Boxes */
+        .stAlert {
+            border-radius: 8px;
+            border-left: 5px solid;
+        }
+
+        .stSuccess {
+            background-color: rgba(0, 205, 90, 0.1);
+            border-left-color: #00CD5A;
+        }
+
+        .stInfo {
+            background-color: rgba(44, 0, 70, 0.05);
+            border-left-color: #7100B4;
+        }
+
+        .stError {
+            background-color: rgba(255, 107, 107, 0.1);
+            border-left-color: #FF6B6B;
+        }
+
+        .stWarning {
+            background-color: rgba(255, 193, 7, 0.1);
+            border-left-color: #FFC107;
+        }
+
+        /* Dividers */
+        hr {
+            border: none;
+            border-top: 2px solid #E8E8E8;
+            margin: 32px 0;
+        }
+
+        /* Headers (fallback for non-custom headers) */
+        h1 {
+            color: #2C0046;
+            font-weight: 900;
+            font-size: 32px;
+        }
+
+        h2 {
+            color: #2C0046;
+            font-weight: 800;
+            font-size: 28px;
+            border-bottom: 3px solid;
+            border-image: linear-gradient(135deg, #00CD5A 0%, #00A360 100%) 1;
+            padding-bottom: 12px;
+            margin-top: 32px;
+        }
+
+        h3 {
+            color: #2C0046;
+            font-weight: 700;
+            font-size: 24px;
+        }
+
+        /* Download Button */
+        .stDownloadButton>button {
+            background: linear-gradient(135deg, #2C0046 0%, #7100B4 100%);
+            color: #FFFFFF;
+            font-weight: 700;
+            border-radius: 12px;
+            padding: 16px 32px;
+            border: none;
+        }
+
+        .stDownloadButton>button:hover {
+            background: linear-gradient(135deg, #7100B4 0%, #9D00E8 100%);
+            box-shadow: 0 6px 16px rgba(113, 0, 180, 0.3);
+        }
+
+        /* Summary Box */
+        .wta-summary-box {
+            background: #FFFFFF;
+            border-left: 5px solid #00CD5A;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 16px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .wta-summary-box h4 {
+            color: #2C0046;
+            font-weight: 700;
+            margin-top: 0;
+        }
+
+        /* Status Indicators */
+        .status-yes {
+            color: #00CD5A;
+            font-weight: 600;
+        }
+
+        .status-no {
+            color: #FF6B6B;
+            font-weight: 600;
+        }
+
+        .position-number {
+            color: #7100B4;
+            font-weight: 700;
+        }
+
+        /* Code blocks */
+        .stCode {
+            background-color: #2C0046;
+            color: #00CD5A;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        /* Progress bar */
+        .stProgress > div > div {
+            background: linear-gradient(135deg, #00CD5A 0%, #00A360 100%);
+        }
+
+        /* Columns spacing */
+        [data-testid="column"] {
+            padding: 0 12px;
+        }
+
+        /* Text elements */
+        p {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #2C0046;
+        }
+
+        /* Remove default Streamlit padding */
+        .block-container {
+            padding-top: 60px;
+            padding-bottom: 60px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 def main():
     """Main Streamlit application"""
 
-    st.title("🎾 WTA AI Ranking Tracker")
-    st.markdown("Track how Perplexity AI cites wtatennis.com across different queries")
+    # Set page configuration
+    st.set_page_config(
+        page_title="WTA AI Ranking Tracker",
+        page_icon="🎾",
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
+
+    # Apply WTA brand styling
+    apply_wta_styling()
+
+    # Page Header
+    st.markdown("""
+    <div class="wta-header">
+        <h1>🎾 WTA AI Ranking Tracker</h1>
+        <p class="subtitle">Track how Perplexity AI cites wtatennis.com across different queries</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Configuration Section
     st.header("⚙️ Configuration")
