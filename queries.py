@@ -113,7 +113,7 @@ RANKINGS_STATS_QUERIES = [
     "tennis elo ratings women",
     "WTA prize money rankings",
     "head to head Sabalenka Swiatek",
-    "youngest number 1 WTA",
+    "Swiatek vs Gauff stats",
     "best tennis serve women",
     "fastest serve women's tennis",
     "most aces women's tennis",
@@ -159,10 +159,9 @@ NEWS_TRENDS_QUERIES = [
     "women's tennis popularity"
 ]
 
-# Category 9: Player Comparisons (12 queries)
+# Category 9: Player Comparisons (11 queries)
 COMPARISON_QUERIES = [
     "Swiatek vs Sabalenka comparison",
-    "Swiatek vs Gauff stats",
     "best women tennis player 2025",
     "greatest female tennis players",
     "women's tennis GOAT debate",
