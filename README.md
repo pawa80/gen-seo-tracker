@@ -132,7 +132,7 @@ wta-ai-tracker/
 - **CSV**: Persistent data storage
 
 ### API Model
-Uses `llama-3.1-sonar-small-128k-online` for search queries with real-time web access.
+Uses `sonar` - Perplexity's current lightweight search model for real-time web access with citations.
 
 ### Domain Matching
 Detects all variants:

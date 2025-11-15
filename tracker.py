@@ -53,7 +53,7 @@ def query_perplexity(query):
     }
 
     payload = {
-        "model": "llama-3.1-sonar-small-128k-online",
+        "model": "sonar",
         "messages": [
             {
                 "role": "user",
