@@ -12,7 +12,9 @@ import streamlit as st
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from queries import ALL_QUERIES, QUERY_CATEGORIES
+import plotly.graph_objects as go
+import plotly.express as px
+from queries import ALL_QUERIES, QUERY_CATEGORIES, CATEGORY_ORDER, CATEGORY_GOALS
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +29,15 @@ WTA_DOMAINS = ["wtatennis.com", "wta.com", "www.wtatennis.com", "www.wta.com"]
 
 # Ensure results directory exists
 RESULTS_DIR.mkdir(exist_ok=True)
+
+# Pål's Scandinavian Depth Palette
+PAL_CHARCOAL = "#2C3135"  # Main backgrounds, headers
+PAL_AMBER = "#FF9500"     # CTAs, links, highlights
+PAL_TEAL = "#0A7C7C"      # Secondary elements
+PAL_WARM_WHITE = "#FAFAF8"  # Light backgrounds
+PAL_STONE_GRAY = "#8B8B8B"  # Borders, secondary text
+PAL_TEXT_DARK = "#1A1D1F"   # Dark text
+PAL_TEXT_LIGHT = "#FFFFFF"  # Light text
 
 
 def check_api_key():
@@ -324,6 +335,176 @@ def calculate_summary_stats(df):
     }
 
 
+def render_executive_summary(df):
+    """Render executive summary with key metrics"""
+    if df.empty:
+        return
+
+    latest_timestamp = df['timestamp'].max()
+    latest = df[df['timestamp'] == latest_timestamp]
+
+    # Calculate metrics
+    total_queries = len(latest)
+    cited_queries = len(latest[latest['appears'] == 'Yes'])
+    cite_rate = (cited_queries / total_queries * 100) if total_queries > 0 else 0
+
+    # Average position (only for cited queries)
+    cited_positions = latest[latest['appears'] == 'Yes']['position']
+    numeric_positions = [p for p in cited_positions if isinstance(p, (int, float))]
+    avg_position = sum(numeric_positions) / len(numeric_positions) if numeric_positions else 0
+
+    # Calculate trend (if we have previous check)
+    trend = ""
+    if len(df['timestamp'].unique()) >= 2:
+        timestamps = sorted(df['timestamp'].unique(), reverse=True)[:2]
+        previous = df[df['timestamp'] == timestamps[1]]
+        prev_cited = len(previous[previous['appears'] == 'Yes'])
+        prev_cite_rate = (prev_cited / len(previous) * 100)
+        change = cite_rate - prev_cite_rate
+        if change > 0:
+            trend = f"↑ +{change:.1f}%"
+        elif change < 0:
+            trend = f"↓ {change:.1f}%"
+        else:
+            trend = "→ No change"
+
+    # Display in prominent box with Pål's colors
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, {PAL_CHARCOAL} 0%, {PAL_TEAL} 100%);
+                padding: 24px; border-radius: 12px; border-bottom: 3px solid {PAL_AMBER};
+                margin-bottom: 24px;">
+        <h2 style="color: {PAL_TEXT_LIGHT}; margin: 0 0 16px 0;">📊 Executive Summary</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+            <div>
+                <div style="color: {PAL_AMBER}; font-size: 36px; font-weight: 800;">{cite_rate:.1f}%</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 14px;">Overall Authority Score</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 12px; opacity: 0.8;">{cited_queries}/{total_queries} queries cite WTA</div>
+            </div>
+            <div>
+                <div style="color: {PAL_AMBER}; font-size: 36px; font-weight: 800;">{avg_position:.1f}</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 14px;">Average Authority Rank</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 12px; opacity: 0.8;">In 6-source authority set</div>
+            </div>
+            <div>
+                <div style="color: {PAL_AMBER}; font-size: 36px; font-weight: 800;">{trend if trend else 'N/A'}</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 14px;">Trend vs. Previous</div>
+                <div style="color: {PAL_TEXT_LIGHT}; font-size: 12px; opacity: 0.8;">Bi-weekly comparison</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_position_distribution(df):
+    """Render position distribution bar chart with Pål's colors"""
+    if df.empty:
+        return
+
+    latest_timestamp = df['timestamp'].max()
+    latest = df[df['timestamp'] == latest_timestamp]
+
+    # Count positions
+    position_counts = {}
+    for i in range(1, 7):
+        position_counts[f"Position {i}"] = len(latest[latest['position'] == i])
+    position_counts["Not Found"] = len(latest[latest['appears'] == 'No'])
+
+    # Previous check comparison (if available)
+    if len(df['timestamp'].unique()) >= 2:
+        timestamps = sorted(df['timestamp'].unique(), reverse=True)[:2]
+        previous = df[df['timestamp'] == timestamps[1]]
+
+        prev_counts = {}
+        for i in range(1, 7):
+            prev_counts[f"Position {i}"] = len(previous[previous['position'] == i])
+        prev_counts["Not Found"] = len(previous[previous['appears'] == 'No'])
+    else:
+        prev_counts = {k: 0 for k in position_counts.keys()}
+
+    # Create figure with Pål's colors
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        name='Current',
+        x=list(position_counts.keys()),
+        y=list(position_counts.values()),
+        marker_color=PAL_AMBER
+    ))
+
+    if any(v > 0 for v in prev_counts.values()):
+        fig.add_trace(go.Bar(
+            name='Previous',
+            x=list(prev_counts.keys()),
+            y=list(prev_counts.values()),
+            marker_color=PAL_TEAL
+        ))
+
+    fig.update_layout(
+        title="Position Distribution",
+        xaxis_title="Authority Rank",
+        yaxis_title="Number of Queries",
+        barmode='group',
+        height=400,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_category_performance(df):
+    """Render category-level performance metrics"""
+    if df.empty:
+        return
+
+    latest_timestamp = df['timestamp'].max()
+    latest = df[df['timestamp'] == latest_timestamp]
+
+    category_stats = []
+    for category in CATEGORY_ORDER:
+        cat_queries = latest[latest['category'] == category]
+        if len(cat_queries) == 0:
+            continue
+
+        cited = len(cat_queries[cat_queries['appears'] == 'Yes'])
+        total = len(cat_queries)
+        cite_rate = (cited / total * 100) if total > 0 else 0
+
+        # Average position
+        positions = [p for p in cat_queries['position'] if isinstance(p, (int, float))]
+        avg_pos = sum(positions) / len(positions) if positions else 0
+
+        # Goal
+        goal = CATEGORY_GOALS.get(category, 70)
+
+        # Trend (if available)
+        trend = "→"
+        if len(df['timestamp'].unique()) >= 2:
+            timestamps = sorted(df['timestamp'].unique(), reverse=True)[:2]
+            prev = df[df['timestamp'] == timestamps[1]]
+            prev_cat = prev[prev['category'] == category]
+            if len(prev_cat) > 0:
+                prev_cited = len(prev_cat[prev_cat['appears'] == 'Yes'])
+                prev_cite_rate = (prev_cited / len(prev_cat) * 100)
+                change = cite_rate - prev_cite_rate
+                if change > 0:
+                    trend = f"↑ +{change:.1f}%"
+                elif change < 0:
+                    trend = f"↓ {change:.1f}%"
+
+        category_stats.append({
+            'Category': category,
+            'Citation %': f"{cite_rate:.1f}%",
+            'Avg Position': f"{avg_pos:.1f}" if avg_pos > 0 else "N/A",
+            'Trend': trend,
+            'Queries': total,
+            'Goal': f"{goal}%"
+        })
+
+    category_df = pd.DataFrame(category_stats)
+    st.dataframe(category_df, use_container_width=True, hide_index=True)
+
+
 def apply_wta_styling():
     """Apply WTA brand styling to the Streamlit app"""
     st.markdown("""
@@ -617,7 +798,7 @@ def main():
 
     # Set page configuration
     st.set_page_config(
-        page_title="WTA AI Ranking Tracker",
+        page_title="AI Search Authority Tracker",
         page_icon="🎾",
         layout="wide",
         initial_sidebar_state="collapsed"
@@ -627,24 +808,62 @@ def main():
     apply_wta_styling()
 
     # Page Header
-    st.markdown("""
-    <div class="wta-header">
-        <h1>🎾 WTA AI Ranking Tracker</h1>
-        <p class="subtitle">Track how Perplexity AI cites wtatennis.com across different queries</p>
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, {PAL_CHARCOAL} 0%, {PAL_TEAL} 100%);
+                padding: 32px; border-radius: 12px; border-bottom: 3px solid {PAL_AMBER};
+                margin-bottom: 24px;">
+        <h1 style="color: {PAL_TEXT_LIGHT}; margin: 0 0 8px 0; font-size: 42px; font-weight: 700;">
+            🎾 AI Search Authority Tracker
+        </h1>
+        <p style="color: {PAL_TEXT_LIGHT}; font-size: 18px; margin: 0; opacity: 0.9;">
+            Track wtatennis.com's authority in AI-generated answers
+        </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # About This Tool Section
+    with st.expander("ℹ️ About This Tool"):
+        st.markdown("""
+        ### What We Track
+        - Position in Perplexity's "authority set" (6 core sources used to generate AI answers)
+        - NOT full web UI display (which shows 10-20 total sources)
+        - Being in the top 6 = AI trusts you as a primary authority for that topic
+
+        ### Why This Matters
+        - Traditional SEO tracks findability in search results
+        - AI Search Authority tracks trustworthiness in answer generation
+        - As users shift to ChatGPT/Perplexity, this becomes the new SEO
+
+        ### Understanding Positions
+        - **Position 1-2:** Primary authority - AI's go-to source
+        - **Position 3-4:** Supporting authority - trusted secondary source
+        - **Position 5-6:** Referenced authority - included but not primary
+        - **Not Found:** AI doesn't cite you for this query (content gap)
+
+        ### About API vs. Web UI Differences
+        This tracker uses Perplexity's official API, which returns the 6 "core sources"
+        used to generate AI answers. The web UI displays additional sources (10-20 total)
+        for user reference.
+
+        We track the core sources because:
+        - ✓ These are the sources AI actually uses to create answers
+        - ✓ Being in this set indicates higher authority/trust
+        - ✓ API-based tracking enables automation and trend analysis
+
+        **Position 2/6 in API authority set > Position 8/13 in web UI display**
+        """)
 
     # Configuration Section
     st.header("⚙️ Configuration")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Total Queries", len(ALL_QUERIES))
 
     with col2:
         api_status = "✅ Connected" if check_api_key() else "❌ Not Connected"
-        st.metric("API Key Status", api_status)
+        st.metric("API Status", api_status)
 
     with col3:
         df = load_results()
@@ -653,6 +872,15 @@ def main():
             st.metric("Last Check", last_check)
         else:
             st.metric("Last Check", "Never")
+
+    with col4:
+        if not df.empty:
+            latest = df[df['timestamp'] == df['timestamp'].max()]
+            cited = len(latest[latest['appears'] == 'Yes'])
+            cite_rate = (cited / len(latest) * 100)
+            st.metric("Citation Rate", f"{cite_rate:.1f}%")
+        else:
+            st.metric("Citation Rate", "N/A")
 
     # API Key validation
     if not check_api_key():
@@ -677,6 +905,26 @@ def main():
 
         # Reload results to show latest data
         df = load_results()
+
+    # Display Executive Summary and Visualizations
+    if not df.empty:
+        # Add category column to df for visualizations
+        df['category'] = df['query'].map(QUERY_CATEGORIES)
+
+        render_executive_summary(df)
+
+        st.markdown("---")
+        st.subheader("📊 Performance Analysis")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### Position Distribution")
+            render_position_distribution(df)
+
+        with col2:
+            st.markdown("### Category Performance")
+            render_category_performance(df)
 
     st.divider()
 
@@ -705,9 +953,9 @@ def main():
             column_config={
                 "query": "Query",
                 "category": "Category",
-                "appears": "Appears?",
-                "position": "Position",
-                "citation_url": st.column_config.LinkColumn("Citation URL"),
+                "appears": "In Authority Set?",
+                "position": "Authority Rank",
+                "citation_url": st.column_config.LinkColumn("Source URL"),
                 "timestamp": "Timestamp"
             }
         )
