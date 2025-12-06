@@ -804,8 +804,38 @@ def main():
         initial_sidebar_state="collapsed"
     )
 
+    # Initialize authentication state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+
+    # Show login screen if not authenticated
+    if not st.session_state.authenticated:
+        st.title("🎾 AI Search Authority Tracker")
+        st.subheader("Login Required")
+
+        password = st.text_input("Password", type="password", key="password_input")
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            login_button = st.button("Login", use_container_width=True)
+
+        if login_button:
+            if password == st.secrets.get("auth_password", ""):
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password")
+
+        st.stop()  # Don't show any content below this if not authenticated
+
     # Apply WTA brand styling
     apply_wta_styling()
+
+    # If authenticated, add logout button in sidebar
+    with st.sidebar:
+        if st.button("Logout"):
+            st.session_state.authenticated = False
+            st.rerun()
 
     # Page Header
     st.markdown(f"""

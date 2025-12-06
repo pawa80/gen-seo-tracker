@@ -58,7 +58,20 @@ PERPLEXITY_API_KEY=your_actual_api_key_here
 3. Generate an API key
 4. Copy the key to your `.env` file
 
-### 4. Run the Dashboard
+### 4. Configure Authentication
+
+This app requires password authentication to access.
+
+**Local Development:**
+1. Create `.streamlit/secrets.toml` file
+2. Add: `auth_password = "your_password"`
+
+**Streamlit Cloud Deployment:**
+1. Go to app settings
+2. Open "Secrets" section
+3. Add: `auth_password = "your_password"`
+
+### 5. Run the Dashboard
 
 ```bash
 streamlit run tracker.py
