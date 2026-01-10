@@ -19,9 +19,11 @@ This application queries Perplexity AI with 41 predefined searches related to WT
 - 📊 Real-time results display with filtering and sorting
 - 📈 Historical data tracking and trend analysis
 - 💾 CSV data export functionality
+- 📦 Supabase database storage for persistent data (optional)
 - ⚡ Rate limiting (1 query/second) to respect API limits
 - 🎯 Citation position tracking (1-10)
 - 🔍 Multi-domain matching (wtatennis.com, wta.com, and variants)
+- 🔐 Password authentication for secure access
 
 ## Setup Instructions
 
@@ -71,7 +73,46 @@ This app requires password authentication to access.
 2. Open "Secrets" section
 3. Add: `auth_password = "your_password"`
 
-### 5. Run the Dashboard
+### 5. Configure Supabase Database (Optional)
+
+For persistent storage and long-term trend tracking, configure Supabase:
+
+1. Create a Supabase project at https://supabase.com
+2. Create the `check_results` table with this schema:
+   ```sql
+   CREATE TABLE check_results (
+     id BIGSERIAL PRIMARY KEY,
+     check_date TIMESTAMP WITH TIME ZONE,
+     query TEXT,
+     category TEXT,
+     appears BOOLEAN,
+     position INTEGER,
+     citation_url TEXT,
+     engine TEXT DEFAULT 'perplexity',
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+   ```
+3. Get your project URL and anon key from Settings > API
+
+**Local Development:**
+Add to `.streamlit/secrets.toml`:
+```toml
+supabase_url = "https://your-project.supabase.co"
+supabase_key = "your_supabase_anon_key"
+```
+
+**Streamlit Cloud Deployment:**
+1. Go to app settings
+2. Open "Secrets" section
+3. Add:
+   ```
+   supabase_url = "https://your-project.supabase.co"
+   supabase_key = "your_supabase_anon_key"
+   ```
+
+**Note:** Supabase is optional. If not configured, results are still saved to CSV for backup.
+
+### 6. Run the Dashboard
 
 ```bash
 streamlit run tracker.py
@@ -106,13 +147,20 @@ The dashboard displays:
 
 ## Data Storage
 
-Results are stored in `results/results.csv` with the following format:
+### CSV Storage (Backup)
+Results are always saved to `results/results.csv` with the following format:
 
 ```csv
 timestamp,query,appears,position,citation_url
 2025-11-08 18:30:00,Aryna Sabalenka,Yes,3,https://www.wtatennis.com/players/...
 2025-11-08 18:30:05,Iga Swiatek,No,Not found,
 ```
+
+### Supabase Database (Optional)
+When configured, results are also stored in Supabase `check_results` table for:
+- Long-term trend tracking
+- Historical analysis across deployments
+- Data persistence independent of server storage
 
 ## Cost Estimate
 
@@ -142,7 +190,8 @@ wta-ai-tracker/
 - **Streamlit**: Dashboard interface
 - **Perplexity API**: AI search with citations
 - **Pandas**: Data manipulation and analysis
-- **CSV**: Persistent data storage
+- **CSV**: Local backup storage
+- **Supabase**: PostgreSQL database for persistent storage (optional)
 
 ### API Model
 Uses `sonar` - Perplexity's current lightweight search model for real-time web access with citations.
@@ -193,10 +242,8 @@ This is an MVP (Minimum Viable Product) with intentional limitations:
 
 - ❌ No automated scheduling (manual execution only)
 - ❌ No query management UI (queries are hardcoded)
-- ❌ No database (CSV storage only)
 - ❌ No email/Slack alerts
 - ❌ No competitor comparison
-- ❌ No advanced visualizations
 
 See ROADMAP.md for planned future features.
 

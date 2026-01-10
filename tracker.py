@@ -14,6 +14,7 @@ import requests
 from dotenv import load_dotenv
 import plotly.graph_objects as go
 import plotly.express as px
+from supabase import create_client, Client
 from queries import ALL_QUERIES, QUERY_CATEGORIES, CATEGORY_ORDER, CATEGORY_GOALS
 
 # Load environment variables
@@ -43,6 +44,66 @@ PAL_TEXT_LIGHT = "#FFFFFF"  # Light text
 def check_api_key():
     """Check if API key is configured"""
     return PERPLEXITY_API_KEY is not None and len(PERPLEXITY_API_KEY) > 0
+
+
+def get_supabase_client():
+    """
+    Initialize and return Supabase client using Streamlit secrets.
+
+    Returns:
+        Client: Supabase client or None if credentials not configured
+    """
+    try:
+        supabase_url = st.secrets.get("supabase_url")
+        supabase_key = st.secrets.get("supabase_key")
+
+        if not supabase_url or not supabase_key:
+            return None
+
+        return create_client(supabase_url, supabase_key)
+    except Exception as e:
+        st.warning(f"Could not initialize Supabase client: {str(e)}")
+        return None
+
+
+def save_result_to_supabase(supabase_client, check_date, query, category, appears, position, citation_url):
+    """
+    Save a single result to Supabase database.
+
+    Args:
+        supabase_client: Initialized Supabase client
+        check_date: ISO format timestamp string
+        query: The search query
+        category: Query category
+        appears: Boolean - whether wtatennis.com appears
+        position: Citation position (int) or None
+        citation_url: The citation URL or None
+
+    Returns:
+        bool: True if save successful, False otherwise
+    """
+    if not supabase_client:
+        return False
+
+    try:
+        # Prepare data for insertion
+        data = {
+            "check_date": check_date,
+            "query": query,
+            "category": category,
+            "appears": appears,
+            "position": position if isinstance(position, int) else None,
+            "citation_url": citation_url if citation_url else None,
+            "engine": "perplexity"
+        }
+
+        # Insert into check_results table
+        supabase_client.table("check_results").insert(data).execute()
+        return True
+    except Exception as e:
+        # Log error but don't crash - database storage is supplementary
+        st.warning(f"Failed to save to database: {str(e)}")
+        return False
 
 
 def query_perplexity(query):
@@ -206,10 +267,15 @@ def run_weekly_check():
     Run the weekly check for all queries
 
     Returns:
-        list: List of result dictionaries
+        tuple: (list of result dictionaries, dict with database save stats)
     """
     results = []
     total_queries = len(ALL_QUERIES)
+    db_success_count = 0
+    db_fail_count = 0
+
+    # Initialize Supabase client (may be None if not configured)
+    supabase_client = get_supabase_client()
 
     # Create progress bar
     progress_bar = st.progress(0)
@@ -236,9 +302,28 @@ def run_weekly_check():
         # Get current timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Save result
+        # Get category for this query
+        category = QUERY_CATEGORIES.get(query, "Unknown")
+
+        # Save result to CSV (backup storage)
         appears_str = "Yes" if appears else "No"
         save_result(timestamp, query, appears_str, position, citation_url)
+
+        # Save result to Supabase database
+        if supabase_client:
+            db_saved = save_result_to_supabase(
+                supabase_client,
+                timestamp,
+                query,
+                category,
+                appears,  # Boolean for database
+                position,
+                citation_url
+            )
+            if db_saved:
+                db_success_count += 1
+            else:
+                db_fail_count += 1
 
         # Store result for display
         results.append({
@@ -257,7 +342,14 @@ def run_weekly_check():
     progress_bar.empty()
     status_text.empty()
 
-    return results
+    # Return results and database stats
+    db_stats = {
+        'enabled': supabase_client is not None,
+        'success': db_success_count,
+        'failed': db_fail_count
+    }
+
+    return results, db_stats
 
 
 def calculate_summary_stats(df):
@@ -929,9 +1021,18 @@ def main():
                 f"This will take approximately {int(len(ALL_QUERIES) * RATE_LIMIT_DELAY)} seconds.")
 
         # Run the check
-        results = run_weekly_check()
+        results, db_stats = run_weekly_check()
 
         st.success(f"✅ Check completed! Processed {len(results)} queries.")
+
+        # Show database storage status
+        if db_stats['enabled']:
+            if db_stats['failed'] == 0:
+                st.success(f"📦 Database: All {db_stats['success']} results saved to Supabase")
+            else:
+                st.warning(f"📦 Database: {db_stats['success']} saved, {db_stats['failed']} failed")
+        else:
+            st.info("📦 Database: Supabase not configured (results saved to CSV only)")
 
         # Reload results to show latest data
         df = load_results()
