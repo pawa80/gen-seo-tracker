@@ -236,6 +236,67 @@ Enforces 1-second delay between queries to respect API limits and prevent rate l
 pip install -r requirements.txt
 ```
 
+### Supabase Data Overwrite Bug
+
+**Problem**: Only one row per query exists in `check_results` - historical data is overwritten instead of appended.
+
+**Expected Behavior**: Multiple rows per query should exist (one per check date) for trend comparison:
+- Row 1: query="WTA ranking system", check_date=2026-01-01
+- Row 2: query="WTA ranking system", check_date=2026-01-14
+
+**Cause**: A UNIQUE constraint on `(query, engine)` or similar columns in your Supabase table is causing upsert behavior.
+
+**Diagnosis**: Run this SQL in the Supabase SQL Editor to check for problematic constraints:
+
+```sql
+-- Check for UNIQUE constraints that might cause upsert behavior
+SELECT
+    tc.constraint_name,
+    tc.constraint_type,
+    kcu.column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+WHERE tc.table_name = 'check_results';
+
+-- Check the actual table definition
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_name = 'check_results';
+```
+
+**Solution**: Remove any UNIQUE constraint that doesn't include `id`:
+
+```sql
+-- Replace [constraint_name] with the actual constraint name from the query above
+ALTER TABLE check_results DROP CONSTRAINT [constraint_name];
+```
+
+**Correct Schema** (only `id` should have a unique constraint):
+
+```sql
+CREATE TABLE check_results (
+    id BIGSERIAL PRIMARY KEY,  -- This is the ONLY unique constraint
+    check_date TIMESTAMP WITH TIME ZONE,
+    query TEXT,
+    category TEXT,
+    appears BOOLEAN,
+    position INTEGER,
+    citation_url TEXT,
+    engine TEXT DEFAULT 'perplexity',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+**Verification**: After fixing, test by running two checks and verifying both rows exist:
+
+```sql
+SELECT * FROM check_results
+WHERE query = 'WTA ranking system'
+ORDER BY check_date;
+-- Should return multiple rows if you've run multiple checks
+```
+
 ## Limitations (MVP)
 
 This is an MVP (Minimum Viable Product) with intentional limitations:

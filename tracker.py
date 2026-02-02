@@ -98,6 +98,9 @@ def save_result_to_supabase(supabase_client, check_date, query, category, appear
         }
 
         # Insert into check_results table
+        # IMPORTANT: Uses simple insert (NOT upsert) to allow multiple rows per query.
+        # The Supabase table must NOT have unique constraints on (query, engine).
+        # Only the 'id' column should have a unique/primary key constraint.
         supabase_client.table("check_results").insert(data).execute()
         return True
     except Exception as e:
