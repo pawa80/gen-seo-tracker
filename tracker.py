@@ -109,6 +109,32 @@ def save_result_to_supabase(supabase_client, check_date, query, category, appear
         return False
 
 
+def get_historical_data(supabase_client):
+    """
+    Fetch all historical check results from Supabase.
+
+    Args:
+        supabase_client: Initialized Supabase client
+
+    Returns:
+        pd.DataFrame: Historical results or empty DataFrame if not available
+    """
+    if not supabase_client:
+        return pd.DataFrame()
+
+    try:
+        response = supabase_client.table('check_results').select('*').order('check_date').execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            # Parse check_date as datetime
+            df['check_date'] = pd.to_datetime(df['check_date'])
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Could not fetch historical data: {str(e)}")
+        return pd.DataFrame()
+
+
 def query_perplexity(query):
     """
     Query Perplexity API and return the response
@@ -600,6 +626,242 @@ def render_category_performance(df):
     st.dataframe(category_df, use_container_width=True, hide_index=True)
 
 
+def render_historical_citation_trend(hist_df):
+    """
+    Render a line chart showing overall citation rate over time.
+
+    Args:
+        hist_df: DataFrame with historical data from Supabase
+    """
+    if hist_df.empty:
+        st.info("No historical data available from Supabase.")
+        return
+
+    # Group by date (ignore time component)
+    hist_df['check_date_only'] = hist_df['check_date'].dt.date
+
+    # Calculate citation rate per check date
+    trend_data = []
+    for date in sorted(hist_df['check_date_only'].unique()):
+        date_df = hist_df[hist_df['check_date_only'] == date]
+        total = len(date_df)
+        cited = len(date_df[date_df['appears'] == True])
+        rate = (cited / total * 100) if total > 0 else 0
+        trend_data.append({
+            'Date': pd.to_datetime(date),
+            'Citation Rate (%)': rate,
+            'Cited': cited,
+            'Total': total
+        })
+
+    if len(trend_data) < 1:
+        st.info("Not enough data points to show trend.")
+        return
+
+    trend_df = pd.DataFrame(trend_data)
+
+    # Create line chart
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=trend_df['Date'],
+        y=trend_df['Citation Rate (%)'],
+        mode='lines+markers',
+        name='Citation Rate',
+        line=dict(color=PAL_AMBER, width=3),
+        marker=dict(size=10, color=PAL_AMBER),
+        hovertemplate='%{x|%b %d, %Y}<br>Rate: %{y:.1f}%<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="Overall Citation Rate Over Time",
+        xaxis_title="Check Date",
+        yaxis_title="Citation Rate (%)",
+        yaxis=dict(range=[0, 100]),
+        height=400,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(
+            tickformat='%b %d, %Y'
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Show data table below
+    display_trend = trend_df.copy()
+    display_trend['Date'] = display_trend['Date'].dt.strftime('%b %d, %Y')
+    display_trend['Citation Rate (%)'] = display_trend['Citation Rate (%)'].apply(lambda x: f"{x:.1f}%")
+    st.dataframe(display_trend, use_container_width=True, hide_index=True)
+
+
+def render_category_trend_comparison(hist_df):
+    """
+    Render category performance comparison across check dates.
+
+    Args:
+        hist_df: DataFrame with historical data from Supabase
+    """
+    if hist_df.empty:
+        st.info("No historical data available from Supabase.")
+        return
+
+    # Group by date (ignore time component)
+    hist_df['check_date_only'] = hist_df['check_date'].dt.date
+    dates = sorted(hist_df['check_date_only'].unique())
+
+    if len(dates) < 1:
+        st.info("Not enough data to compare.")
+        return
+
+    # Build comparison data
+    comparison_data = []
+    for category in CATEGORY_ORDER:
+        row = {'Category': category}
+        prev_rate = None
+
+        for date in dates:
+            date_df = hist_df[(hist_df['check_date_only'] == date) & (hist_df['category'] == category)]
+            total = len(date_df)
+            cited = len(date_df[date_df['appears'] == True])
+            rate = (cited / total * 100) if total > 0 else 0
+
+            date_label = pd.to_datetime(date).strftime('%b %d, %Y')
+            row[date_label] = f"{rate:.1f}%"
+
+            # Calculate change from previous date
+            if prev_rate is not None:
+                change = rate - prev_rate
+                if change > 0:
+                    row[f'{date_label} Δ'] = f"↑ +{change:.1f}%"
+                elif change < 0:
+                    row[f'{date_label} Δ'] = f"↓ {change:.1f}%"
+                else:
+                    row[f'{date_label} Δ'] = "→ 0%"
+            prev_rate = rate
+
+        comparison_data.append(row)
+
+    comparison_df = pd.DataFrame(comparison_data)
+    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+
+    # Create grouped bar chart if we have multiple dates
+    if len(dates) >= 2:
+        fig = go.Figure()
+
+        colors = [PAL_TEAL, PAL_AMBER, '#6B8E23', '#CD853F', '#4682B4']  # Extended palette
+
+        for i, date in enumerate(dates):
+            date_label = pd.to_datetime(date).strftime('%b %d, %Y')
+            rates = []
+            for category in CATEGORY_ORDER:
+                date_df = hist_df[(hist_df['check_date_only'] == date) & (hist_df['category'] == category)]
+                total = len(date_df)
+                cited = len(date_df[date_df['appears'] == True])
+                rate = (cited / total * 100) if total > 0 else 0
+                rates.append(rate)
+
+            fig.add_trace(go.Bar(
+                name=date_label,
+                x=CATEGORY_ORDER,
+                y=rates,
+                marker_color=colors[i % len(colors)]
+            ))
+
+        fig.update_layout(
+            title="Category Citation Rates by Check Date",
+            xaxis_title="Category",
+            yaxis_title="Citation Rate (%)",
+            barmode='group',
+            height=450,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            yaxis=dict(range=[0, 100]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def render_query_status_changes(hist_df):
+    """
+    Render a table showing queries that changed status between check dates.
+
+    Args:
+        hist_df: DataFrame with historical data from Supabase
+    """
+    if hist_df.empty:
+        st.info("No historical data available from Supabase.")
+        return
+
+    # Group by date (ignore time component)
+    hist_df['check_date_only'] = hist_df['check_date'].dt.date
+    dates = sorted(hist_df['check_date_only'].unique())
+
+    if len(dates) < 2:
+        st.info("Need at least 2 check dates to show changes.")
+        return
+
+    # Compare first and last dates (or last two if preferred)
+    first_date = dates[0]
+    last_date = dates[-1]
+
+    first_df = hist_df[hist_df['check_date_only'] == first_date]
+    last_df = hist_df[hist_df['check_date_only'] == last_date]
+
+    first_label = pd.to_datetime(first_date).strftime('%b %d, %Y')
+    last_label = pd.to_datetime(last_date).strftime('%b %d, %Y')
+
+    changes = []
+    queries = hist_df['query'].unique()
+
+    for query in queries:
+        first_row = first_df[first_df['query'] == query]
+        last_row = last_df[last_df['query'] == query]
+
+        if first_row.empty or last_row.empty:
+            continue
+
+        first_status = "Cited" if first_row.iloc[0]['appears'] else "Not Cited"
+        last_status = "Cited" if last_row.iloc[0]['appears'] else "Not Cited"
+
+        if first_status != last_status:
+            if last_status == "Cited":
+                change_type = "🟢 Gained"
+            else:
+                change_type = "🔴 Lost"
+
+            changes.append({
+                'Query': query,
+                'Category': first_row.iloc[0].get('category', 'Unknown'),
+                first_label: first_status,
+                last_label: last_status,
+                'Change': change_type
+            })
+
+    if not changes:
+        st.success("No queries changed status between checks.")
+        return
+
+    changes_df = pd.DataFrame(changes)
+
+    # Sort: losses first, then gains
+    changes_df['sort_key'] = changes_df['Change'].apply(lambda x: 0 if 'Lost' in x else 1)
+    changes_df = changes_df.sort_values('sort_key').drop('sort_key', axis=1)
+
+    # Summary counts
+    gained = len([c for c in changes if 'Gained' in c['Change']])
+    lost = len([c for c in changes if 'Lost' in c['Change']])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Queries Gained Citation", gained, delta=f"+{gained}" if gained > 0 else None)
+    with col2:
+        st.metric("Queries Lost Citation", lost, delta=f"-{lost}" if lost > 0 else None, delta_color="inverse")
+
+    st.dataframe(changes_df, use_container_width=True, hide_index=True)
+
+
 def apply_wta_styling():
     """Apply WTA brand styling to the Streamlit app"""
     st.markdown("""
@@ -1059,6 +1321,42 @@ def main():
         with col2:
             st.markdown("### Category Performance")
             render_category_performance(df)
+
+    st.divider()
+
+    # Historical Trends Section (from Supabase)
+    supabase_client = get_supabase_client()
+    hist_df = get_historical_data(supabase_client)
+
+    if not hist_df.empty:
+        with st.expander("📈 Historical Trends", expanded=True):
+            st.markdown(f"""
+            <div style="background: {PAL_CHARCOAL}; padding: 12px 16px; border-radius: 8px;
+                        border-left: 4px solid {PAL_AMBER}; margin-bottom: 16px;">
+                <span style="color: {PAL_TEXT_LIGHT}; font-size: 14px;">
+                    📊 Showing data from <strong>{len(hist_df['check_date'].dt.date.unique())}</strong> check dates
+                    ({len(hist_df)} total records)
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Tab layout for different visualizations
+            tab1, tab2, tab3 = st.tabs(["📈 Citation Rate Trend", "📊 Category Comparison", "🔄 Status Changes"])
+
+            with tab1:
+                st.markdown("### Overall Citation Rate Over Time")
+                render_historical_citation_trend(hist_df)
+
+            with tab2:
+                st.markdown("### Category Performance Across Check Dates")
+                render_category_trend_comparison(hist_df)
+
+            with tab3:
+                st.markdown("### Queries That Changed Status")
+                render_query_status_changes(hist_df)
+    else:
+        with st.expander("📈 Historical Trends", expanded=False):
+            st.info("No historical data available. Configure Supabase to enable trend tracking across check dates.")
 
     st.divider()
 
