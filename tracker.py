@@ -68,7 +68,11 @@ def get_supabase_client():
 
 def save_result_to_supabase(supabase_client, check_date, query, category, appears, position, citation_url):
     """
-    Save a single result to Supabase database.
+    Save a single result to Supabase database using UPSERT.
+
+    Uses UPSERT with (query, engine, check_date_only) as the conflict key.
+    This ensures that if a check is restarted on the same day, results are
+    updated rather than duplicated.
 
     Args:
         supabase_client: Initialized Supabase client
@@ -86,9 +90,13 @@ def save_result_to_supabase(supabase_client, check_date, query, category, appear
         return False
 
     try:
-        # Prepare data for insertion
+        # Extract date-only for the unique constraint
+        check_date_only = check_date.split(" ")[0] if " " in check_date else check_date.split("T")[0]
+
+        # Prepare data for upsert
         data = {
             "check_date": check_date,
+            "check_date_only": check_date_only,
             "query": query,
             "category": category,
             "appears": appears,
@@ -97,11 +105,12 @@ def save_result_to_supabase(supabase_client, check_date, query, category, appear
             "engine": "perplexity"
         }
 
-        # Insert into check_results table
-        # IMPORTANT: Uses simple insert (NOT upsert) to allow multiple rows per query.
-        # The Supabase table must NOT have unique constraints on (query, engine).
-        # Only the 'id' column should have a unique/primary key constraint.
-        supabase_client.table("check_results").insert(data).execute()
+        # UPSERT: Insert or update if (query, engine, check_date_only) already exists
+        # This prevents duplicates from app restarts while allowing one row per query per day
+        supabase_client.table("check_results").upsert(
+            data,
+            on_conflict="query,engine,check_date_only"
+        ).execute()
         return True
     except Exception as e:
         # Log error but don't crash - database storage is supplementary
@@ -133,6 +142,36 @@ def get_historical_data(supabase_client):
     except Exception as e:
         st.warning(f"Could not fetch historical data: {str(e)}")
         return pd.DataFrame()
+
+
+def load_results_from_supabase(supabase_client):
+    """
+    Load results from Supabase in CSV-compatible format for dashboard display.
+
+    This function converts Supabase data to match the format expected by
+    existing dashboard functions (which were designed for CSV data).
+
+    Args:
+        supabase_client: Initialized Supabase client
+
+    Returns:
+        pd.DataFrame: Results in CSV-compatible format with columns:
+                      timestamp, query, appears, position, citation_url
+    """
+    hist_df = get_historical_data(supabase_client)
+
+    if hist_df.empty:
+        return pd.DataFrame(columns=['timestamp', 'query', 'appears', 'position', 'citation_url'])
+
+    # Convert to CSV-compatible format
+    df = hist_df.copy()
+    df['timestamp'] = df['check_date']
+    df['appears'] = df['appears'].apply(lambda x: 'Yes' if x else 'No')
+
+    # Ensure all expected columns exist
+    result_df = df[['timestamp', 'query', 'appears', 'position', 'citation_url']].copy()
+
+    return result_df
 
 
 def query_perplexity(query):
@@ -1243,6 +1282,17 @@ def main():
     # Configuration Section
     st.header("⚙️ Configuration")
 
+    # Initialize Supabase client early - used for both data loading and saving
+    supabase_client = get_supabase_client()
+
+    # Load data: Supabase (primary) with CSV fallback
+    if supabase_client:
+        df = load_results_from_supabase(supabase_client)
+        data_source = "supabase"
+    else:
+        df = load_results()
+        data_source = "csv"
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -1253,7 +1303,6 @@ def main():
         st.metric("API Status", api_status)
 
     with col3:
-        df = load_results()
         if not df.empty:
             last_check = df['timestamp'].max().strftime("%Y-%m-%d %H:%M")
             st.metric("Last Check", last_check)
@@ -1299,8 +1348,11 @@ def main():
         else:
             st.info("📦 Database: Supabase not configured (results saved to CSV only)")
 
-        # Reload results to show latest data
-        df = load_results()
+        # Reload results to show latest data (from same source)
+        if supabase_client:
+            df = load_results_from_supabase(supabase_client)
+        else:
+            df = load_results()
 
     # Display Executive Summary and Visualizations
     if not df.empty:
@@ -1325,7 +1377,7 @@ def main():
     st.divider()
 
     # Historical Trends Section (from Supabase)
-    supabase_client = get_supabase_client()
+    # supabase_client already initialized above
     hist_df = get_historical_data(supabase_client)
 
     if not hist_df.empty:
