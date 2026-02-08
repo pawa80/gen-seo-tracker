@@ -165,7 +165,13 @@ def load_results_from_supabase(supabase_client):
 
     # Convert to CSV-compatible format
     df = hist_df.copy()
-    df['timestamp'] = df['check_date']
+
+    # IMPORTANT: Normalize timestamps to start-of-day for each check date
+    # This ensures all rows from the same check run have identical timestamps,
+    # which is required for filtering "latest results" correctly.
+    # Without this, df['timestamp'].max() would return only 1 row (the last query of the run).
+    df['timestamp'] = pd.to_datetime(df['check_date'].dt.date)
+
     df['appears'] = df['appears'].apply(lambda x: 'Yes' if x else 'No')
 
     # Ensure all expected columns exist
